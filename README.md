@@ -22,10 +22,17 @@ through a captured session.
 ## what it does right now
 
 `escfmt` reads a byte stream, walks it looking for `ESC` bytes, and
-rewrites Select Graphic Rendition (SGR, the color/style) sequences into
-a canonical form: no leading zeros, no implicit empty reset. Other
-recognized escape sequences (cursor movement, OSC/DCS strings, and so
-on) are validated and passed through as-is.
+rewrites two families of sequences into canonical form:
+
+- Select Graphic Rendition (SGR, the color/style) sequences: no
+  leading zeros, no implicit empty reset.
+- Cursor movement (`CUU`/`CUD`/`CUF`/`CUB`/`CNL`/`CPL`/`CHA`/`CUP`):
+  a parameter equal to the command's default is dropped rather than
+  spelled out, so `\x1b[1A`, `\x1b[0A`, and `\x1b[A` all collapse to
+  `\x1b[A`, and `\x1b[1;1H` collapses to `\x1b[H`.
+
+Other recognized escape sequences (OSC/DCS strings and so on) are
+validated and passed through as-is.
 
 The important part is what happens when it finds something it doesn't
 recognize.
@@ -78,5 +85,6 @@ go build ./...
 
 ## status
 
-Early. SGR normalization works; other escape families are recognized
-and validated but not yet rewritten into a canonical form.
+Early. SGR and cursor-movement normalization work; other escape
+families (OSC window titles and hyperlinks, in particular) are
+recognized and validated but not yet rewritten into a canonical form.

@@ -45,6 +45,45 @@ func TestFormatLenientPassesUnknownEscapeThrough(t *testing.T) {
 	}
 }
 
+func TestFormatCursorMovementNormalization(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		// single-parameter movement commands default to a count of 1;
+		// an explicit 1 or 0 is redundant and drops out.
+		{"\x1b[0A", "\x1b[A"},
+		{"\x1b[1A", "\x1b[A"},
+		{"\x1b[01B", "\x1b[B"},
+		{"\x1b[5C", "\x1b[5C"},
+		{"\x1b[05D", "\x1b[5D"},
+		{"\x1b[00E", "\x1b[E"},
+		// extra fields on a single-param command aren't a shape we
+		// know how to canonicalize, so they pass through unchanged.
+		{"\x1b[1;2A", "\x1b[1;2A"},
+		// cursor position (CUP) takes row;col, each defaulting to 1.
+		{"\x1b[H", "\x1b[H"},
+		{"\x1b[1;1H", "\x1b[H"},
+		{"\x1b[0;0H", "\x1b[H"},
+		{"\x1b[5H", "\x1b[5H"},
+		{"\x1b[5;1H", "\x1b[5H"},
+		{"\x1b[1;5H", "\x1b[;5H"},
+		{"\x1b[05;03H", "\x1b[5;3H"},
+		{"\x1b[3;5H", "\x1b[3;5H"},
+		{"\x1b[1;1f", "\x1b[f"},
+		{"\x1b[5;3;1H", "\x1b[5;3;1H"},
+	}
+	for _, c := range cases {
+		got, err := Format([]byte(c.in), false)
+		if err != nil {
+			t.Errorf("Format(%q) returned error: %v", c.in, err)
+			continue
+		}
+		if string(got) != c.want {
+			t.Errorf("Format(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
 func TestFormatStrictRejectsTruncatedCSI(t *testing.T) {
 	_, err := Format([]byte("\x1b[1;3"), false)
 	if err == nil {

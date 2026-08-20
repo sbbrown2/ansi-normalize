@@ -115,16 +115,99 @@ func readCSI(buf []byte, lenient bool) ([]byte, int, error) {
 	}
 
 	params := buf[2:i]
-	if final == 'm' {
-		normalized := normalizeSGR(params)
-		result := make([]byte, 0, len(normalized)+3)
-		result = append(result, 0x1b, '[')
-		result = append(result, normalized...)
-		result = append(result, 'm')
-		return result, i + 1, nil
+	switch final {
+	case 'm':
+		return csiResult(normalizeSGR(params), final), i + 1, nil
+	case 'A', 'B', 'C', 'D', 'E', 'F', 'G':
+		if normalized, ok := normalizeSingleMoveParam(params); ok {
+			return csiResult(normalized, final), i + 1, nil
+		}
+	case 'H', 'f':
+		return csiResult(normalizeCursorPosition(params), final), i + 1, nil
 	}
 
 	return buf[:i+1], i + 1, nil
+}
+
+func csiResult(params []byte, final byte) []byte {
+	result := make([]byte, 0, len(params)+3)
+	result = append(result, 0x1b, '[')
+	result = append(result, params...)
+	result = append(result, final)
+	return result
+}
+
+// isMoveDefault reports whether a single cursor-movement parameter field
+// carries the default value. Per ECMA-48, an omitted parameter and an
+// explicit 0 both mean "1" for these commands, so all three are
+// interchangeable and collapse to the same canonical (omitted) form.
+func isMoveDefault(field string) bool {
+	if field == "" {
+		return true
+	}
+	stripped := strings.TrimLeft(field, "0")
+	return stripped == "" || stripped == "1"
+}
+
+// stripLeadingZeros normalizes a numeric parameter field, e.g. "05" -> "5".
+// An all-zero field normalizes to "0".
+func stripLeadingZeros(field string) string {
+	stripped := strings.TrimLeft(field, "0")
+	if stripped == "" {
+		return "0"
+	}
+	return stripped
+}
+
+// normalizeSingleMoveParam handles the single-parameter cursor movement
+// commands (CUU, CUD, CUF, CUB, CNL, CPL, CHA), all of which default to a
+// count of 1. It reports ok == false when the parameter list has more than
+// one field, since that isn't a shape this function knows how to canonicalize.
+func normalizeSingleMoveParam(params []byte) ([]byte, bool) {
+	raw := string(params)
+	if strings.Contains(raw, ";") {
+		return nil, false
+	}
+	if isMoveDefault(raw) {
+		return nil, true
+	}
+	return []byte(stripLeadingZeros(raw)), true
+}
+
+// normalizeCursorPosition handles CUP (final byte 'H' or 'f'), which takes
+// an optional row and column, each defaulting to 1. A field left at its
+// default is omitted from the output rather than written out explicitly.
+func normalizeCursorPosition(params []byte) []byte {
+	raw := string(params)
+	if raw == "" {
+		return nil
+	}
+	fields := strings.Split(raw, ";")
+	if len(fields) > 2 {
+		return params
+	}
+
+	row := fields[0]
+	rowDefault := isMoveDefault(row)
+	if len(fields) == 1 {
+		if rowDefault {
+			return nil
+		}
+		return []byte(stripLeadingZeros(row))
+	}
+
+	col := fields[1]
+	colDefault := isMoveDefault(col)
+	switch {
+	case rowDefault && colDefault:
+		return nil
+	case rowDefault:
+		return []byte(";" + stripLeadingZeros(col))
+	case colDefault:
+		return []byte(stripLeadingZeros(row))
+	default:
+		return []byte(stripLeadingZeros(row) + ";" + stripLeadingZeros(col))
+	}
 }
 
 // normalizeSGR rewrites Select Graphic Rendition parameters into a
@@ -137,15 +220,7 @@ func normalizeSGR(params []byte) []byte {
 	}
 	fields := strings.Split(string(params), ";")
 	for idx, f := range fields {
-		if f == "" {
-			fields[idx] = "0"
-			continue
-		}
-		trimmed := strings.TrimLeft(f, "0")
-		if trimmed == "" {
-			trimmed = "0"
-		}
-		fields[idx] = trimmed
+		fields[idx] = stripLeadingZeros(f)
 	}
 	return []byte(strings.Join(fields, ";"))
 }
