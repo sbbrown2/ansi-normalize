@@ -1,0 +1,82 @@
+# ansi-normalize
+
+`escfmt` normalizes terminal escape sequences in text so that
+semantically identical output stops looking different on the wire.
+
+## the problem
+
+Capture terminal output from two different programs, or the same
+program at two different times, and diff it. You'll get noise that has
+nothing to do with the actual content:
+
+- `\x1b[m` and `\x1b[0m` both reset all attributes, but they're
+  different bytes.
+- `\x1b[01;32m` and `\x1b[1;32m` both mean bold green, but one has a
+  padded zero.
+- Some tools drop the implicit `0` in a parameter list, others don't.
+
+None of that matters to a terminal. All of it matters if you're diffing
+logs, writing a snapshot test against colored CLI output, or grepping
+through a captured session.
+
+## what it does right now
+
+`escfmt` reads a byte stream, walks it looking for `ESC` bytes, and
+rewrites Select Graphic Rendition (SGR, the color/style) sequences into
+a canonical form: no leading zeros, no implicit empty reset. Other
+recognized escape sequences (cursor movement, OSC/DCS strings, and so
+on) are validated and passed through as-is.
+
+The important part is what happens when it finds something it doesn't
+recognize.
+
+## strict by default
+
+By default, any escape sequence `escfmt` can't fully parse - an
+unknown introducer, a truncated CSI sequence cut off mid-stream, a
+string sequence with no terminator - is a hard error. The tool refuses
+to guess, because silently passing through something it doesn't
+understand is how you end up with "normalized" output that still isn't
+normalized.
+
+```
+$ printf 'hello \x1bZ world' | escfmt
+escfmt: strict mode rejected input: offset 6: unrecognized escape 0x5a
+escfmt: rerun with --lenient to pass unrecognized sequences through unchanged
+```
+
+If you're dealing with a capture from something unusual and you just
+want the known sequences cleaned up while everything else is left
+alone, use `--lenient`:
+
+```
+$ printf 'hello \x1bZ world' | escfmt --lenient
+hello ESCZ world   # (shown here as ESCZ; the real output has a raw 0x1b byte)
+```
+
+## usage
+
+```
+escfmt [--lenient] [file]
+```
+
+Reads from stdin if no file is given, writes the normalized result to
+stdout.
+
+```
+$ cat captured.log | escfmt > normalized.log
+$ escfmt --lenient weird_capture.ans > clean.ans
+```
+
+## building
+
+Standard library only, no dependencies:
+
+```
+go build ./...
+```
+
+## status
+
+Early. SGR normalization works; other escape families are recognized
+and validated but not yet rewritten into a canonical form.
