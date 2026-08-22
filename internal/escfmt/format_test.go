@@ -90,3 +90,51 @@ func TestFormatStrictRejectsTruncatedCSI(t *testing.T) {
 		t.Fatal("expected an error for a truncated CSI sequence in strict mode")
 	}
 }
+
+func TestFormatOSCTerminatorNormalization(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		// window title (OSC 0/1/2): BEL and ST are interchangeable
+		// terminators, so BEL collapses to the canonical ST form.
+		{"\x1b]0;title\x07", "\x1b]0;title\x1b\\"},
+		{"\x1b]2;window title\x07", "\x1b]2;window title\x1b\\"},
+		{"\x1b]1;icon name\x1b\\", "\x1b]1;icon name\x1b\\"},
+		// hyperlinks (OSC 8): open and close both get the same treatment.
+		{"\x1b]8;;http://example.com\x07link text\x1b]8;;\x07",
+			"\x1b]8;;http://example.com\x1b\\link text\x1b]8;;\x1b\\"},
+		{"\x1b]8;id=1;http://example.com\x1b\\link\x1b]8;;\x1b\\",
+			"\x1b]8;id=1;http://example.com\x1b\\link\x1b]8;;\x1b\\"},
+	}
+	for _, c := range cases {
+		got, err := Format([]byte(c.in), false)
+		if err != nil {
+			t.Errorf("Format(%q) returned error: %v", c.in, err)
+			continue
+		}
+		if string(got) != c.want {
+			t.Errorf("Format(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestFormatStrictRejectsUnterminatedOSC(t *testing.T) {
+	_, err := Format([]byte("\x1b]0;title"), false)
+	if err == nil {
+		t.Fatal("expected an error for an unterminated OSC sequence in strict mode")
+	}
+	if _, ok := err.(*MalformedError); !ok {
+		t.Fatalf("expected *MalformedError, got %T", err)
+	}
+}
+
+func TestFormatLenientPassesUnterminatedOSCThrough(t *testing.T) {
+	in := "\x1b]0;title"
+	got, err := Format([]byte(in), true)
+	if err != nil {
+		t.Fatalf("unexpected error in lenient mode: %v", err)
+	}
+	if string(got) != in {
+		t.Errorf("Format(%q, lenient) = %q, want unchanged input", in, got)
+	}
+}

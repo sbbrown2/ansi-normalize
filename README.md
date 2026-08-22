@@ -30,8 +30,12 @@ rewrites two families of sequences into canonical form:
   a parameter equal to the command's default is dropped rather than
   spelled out, so `\x1b[1A`, `\x1b[0A`, and `\x1b[A` all collapse to
   `\x1b[A`, and `\x1b[1;1H` collapses to `\x1b[H`.
+- OSC sequences (window titles, hyperlinks, and the like): some
+  programs terminate these with BEL (`\x07`), others with the two-byte
+  string terminator `ESC \`. Both mean the same thing, so the output
+  always uses `ESC \`.
 
-Other recognized escape sequences (OSC/DCS strings and so on) are
+Other recognized string-type escape sequences (DCS/APC/PM) are
 validated and passed through as-is.
 
 The important part is what happens when it finds something it doesn't
@@ -85,6 +89,6 @@ go build ./...
 
 ## status
 
-Early. SGR and cursor-movement normalization work; other escape
-families (OSC window titles and hyperlinks, in particular) are
-recognized and validated but not yet rewritten into a canonical form.
+Early. SGR, cursor-movement, and OSC terminator normalization work;
+DCS/APC/PM string sequences are recognized and validated but passed
+through unchanged.

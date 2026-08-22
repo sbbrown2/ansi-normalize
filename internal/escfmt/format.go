@@ -72,7 +72,9 @@ func readEscape(buf []byte, lenient bool) ([]byte, int, error) {
 	switch buf[1] {
 	case '[':
 		return readCSI(buf, lenient)
-	case ']', 'P', '_', '^':
+	case ']':
+		return readOSC(buf, lenient)
+	case 'P', '_', '^':
 		return readStringSeq(buf, lenient)
 	default:
 		if singleCharEscapes[buf[1]] {
@@ -225,9 +227,42 @@ func normalizeSGR(params []byte) []byte {
 	return []byte(strings.Join(fields, ";"))
 }
 
-// readStringSeq parses OSC/DCS/APC/PM style sequences: ESC followed by a
+// readOSC parses "ESC ] payload terminator", where terminator is either
+// BEL (0x07) or the two-byte string terminator ESC \. Both terminators are
+// accepted by every terminal that implements OSC, so which one a program
+// happened to write is exactly the kind of wire noise Format exists to
+// remove: the output always uses ESC \.
+func readOSC(buf []byte, lenient bool) ([]byte, int, error) {
+	i := 2
+	for i < len(buf) {
+		if buf[i] == 0x07 {
+			return oscResult(buf[2:i]), i + 1, nil
+		}
+		if buf[i] == 0x1b && i+1 < len(buf) && buf[i+1] == '\\' {
+			return oscResult(buf[2:i]), i + 2, nil
+		}
+		i++
+	}
+	if lenient {
+		return buf, len(buf), nil
+	}
+	return nil, 0, errors.New("unterminated OSC sequence")
+}
+
+func oscResult(payload []byte) []byte {
+	result := make([]byte, 0, len(payload)+4)
+	result = append(result, 0x1b, ']')
+	result = append(result, payload...)
+	result = append(result, 0x1b, '\\')
+	return result
+}
+
+// readStringSeq parses DCS/APC/PM style sequences: ESC followed by a
 // one-byte introducer, then arbitrary bytes, terminated by BEL (0x07) or
-// the two-byte string terminator ESC \.
+// the two-byte string terminator ESC \. Unlike OSC these are left as
+// written; BEL as a terminator for these is rare enough in practice that
+// rewriting it isn't worth the risk of touching payload bytes we don't
+// otherwise parse.
 func readStringSeq(buf []byte, lenient bool) ([]byte, int, error) {
 	i := 2
 	for i < len(buf) {
