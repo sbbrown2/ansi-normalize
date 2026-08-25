@@ -68,7 +68,7 @@ hello ESCZ world   # (shown here as ESCZ; the real output has a raw 0x1b byte)
 ## usage
 
 ```
-escfmt [--lenient] [file]
+escfmt [--lenient] [--strip] [file]
 ```
 
 Reads from stdin if no file is given, writes the normalized result to
@@ -78,6 +78,19 @@ stdout.
 $ cat captured.log | escfmt > normalized.log
 $ escfmt --lenient weird_capture.ans > clean.ans
 ```
+
+If you don't want normalized escape sequences, you want none at all,
+pass `--strip` to remove every escape sequence and keep only the plain
+text:
+
+```
+$ printf 'hello \x1b[1;32mworld\x1b[0m' | escfmt --strip
+hello world
+```
+
+`--strip` still parses strictly by default - an unrecognized or
+truncated sequence is an error unless you also pass `--lenient`, in
+which case it's dropped along with everything else `--strip` removes.
 
 ## building
 

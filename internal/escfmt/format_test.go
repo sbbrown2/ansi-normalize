@@ -138,3 +138,49 @@ func TestFormatLenientPassesUnterminatedOSCThrough(t *testing.T) {
 		t.Errorf("Format(%q, lenient) = %q, want unchanged input", in, got)
 	}
 }
+
+func TestStripRemovesRecognizedSequences(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"plain text, no escapes", "plain text, no escapes"},
+		{"\x1b[1;32mgreen\x1b[0m", "green"},
+		{"\x1b[5;3Hpositioned", "positioned"},
+		{"\x1b]0;title\x1b\\after", "after"},
+		{"\x1b]0;title\x07after", "after"},
+		{"before\x1b7\x1b8after", "beforeafter"},
+	}
+	for _, c := range cases {
+		got, err := Strip([]byte(c.in), false)
+		if err != nil {
+			t.Errorf("Strip(%q) returned error: %v", c.in, err)
+			continue
+		}
+		if string(got) != c.want {
+			t.Errorf("Strip(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestStripStrictRejectsUnknownEscape(t *testing.T) {
+	_, err := Strip([]byte("\x1bZ"), false)
+	if err == nil {
+		t.Fatal("expected an error for an unrecognized escape in strict mode")
+	}
+	if _, ok := err.(*MalformedError); !ok {
+		t.Fatalf("expected *MalformedError, got %T", err)
+	}
+}
+
+func TestStripLenientDropsUnknownEscapeToo(t *testing.T) {
+	// Strip's job is to remove escape sequences, recognized or not, so
+	// lenient mode still removes an unrecognized one instead of leaving
+	// it in place the way Format does.
+	got, err := Strip([]byte("before\x1bZafter"), true)
+	if err != nil {
+		t.Fatalf("unexpected error in lenient mode: %v", err)
+	}
+	if string(got) != "beforeafter" {
+		t.Errorf("Strip(lenient) = %q, want %q", got, "beforeafter")
+	}
+}

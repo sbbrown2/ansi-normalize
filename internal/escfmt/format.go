@@ -32,6 +32,22 @@ func (e *MalformedError) Error() string {
 // *MalformedError and no output. In lenient mode those sequences are
 // copied through byte for byte instead.
 func Format(input []byte, lenient bool) ([]byte, error) {
+	return walk(input, lenient, func(seq []byte) []byte { return seq })
+}
+
+// Strip returns a copy of input with every escape sequence removed,
+// leaving only the plain text. It applies the same strict/lenient
+// parsing rules as Format - an unrecognized or truncated sequence is
+// still an error in strict mode, since deciding what counts as "an
+// escape sequence" to strip requires parsing it first.
+func Strip(input []byte, lenient bool) ([]byte, error) {
+	return walk(input, lenient, func(seq []byte) []byte { return nil })
+}
+
+// walk scans input for escape sequences, copying plain text through
+// unchanged and passing each recognized sequence to transform to decide
+// what (if anything) gets written in its place.
+func walk(input []byte, lenient bool, transform func(seq []byte) []byte) ([]byte, error) {
 	out := make([]byte, 0, len(input))
 	i := 0
 	for i < len(input) {
@@ -44,7 +60,7 @@ func Format(input []byte, lenient bool) ([]byte, error) {
 		if err != nil {
 			return nil, &MalformedError{Offset: i, Reason: err.Error()}
 		}
-		out = append(out, seq...)
+		out = append(out, transform(seq)...)
 		i += n
 	}
 	return out, nil
