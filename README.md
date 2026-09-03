@@ -68,7 +68,7 @@ hello ESCZ world   # (shown here as ESCZ; the real output has a raw 0x1b byte)
 ## usage
 
 ```
-escfmt [--lenient] [--strip] [file]
+escfmt [--lenient] [--strip] [-w] [file...]
 ```
 
 Reads from stdin if no file is given, writes the normalized result to
@@ -78,6 +78,22 @@ stdout.
 $ cat captured.log | escfmt > normalized.log
 $ escfmt --lenient weird_capture.ans > clean.ans
 ```
+
+Pass more than one file and each is read and normalized in turn, with
+output written to stdout in order - handy for checking several captures
+in one pass. Pass `-w` to write the normalized result back to each file
+instead, in place, rather than printing it:
+
+```
+$ escfmt -w session-*.log
+```
+
+`-w` requires at least one file argument; there's no such thing as
+writing stdin back in place.
+
+If any one file fails to parse in strict mode, `escfmt` reports it and
+keeps going on the rest, then exits nonzero once all files have been
+processed.
 
 If you don't want normalized escape sequences, you want none at all,
 pass `--strip` to remove every escape sequence and keep only the plain
