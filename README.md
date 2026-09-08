@@ -38,6 +38,23 @@ rewrites two families of sequences into canonical form:
 Other recognized string-type escape sequences (DCS/APC/PM) are
 validated and passed through as-is.
 
+## examples
+
+Escape bytes below are written as `ESC` since a raw `0x1b` doesn't
+render in a table. Each row is exercised by a test in
+`internal/escfmt/format_test.go`.
+
+| before | after |
+| --- | --- |
+| `ESC[m` | `ESC[0m` |
+| `ESC[01;032m` | `ESC[1;32m` |
+| `ESC[38;5;001m` | `ESC[38;5;1m` |
+| `ESC[1;1H` | `ESC[H` |
+| `ESC[05;03H` | `ESC[5;3H` |
+| `ESC[1;5H` | `ESC[;5H` |
+| `ESC]0;titleBEL` | `ESC]0;titleESC\` |
+| `ESC]8;;http://example.comBELlink textESC]8;;BEL` | `ESC]8;;http://example.comESC\link textESC]8;;ESC\` |
+
 The important part is what happens when it finds something it doesn't
 recognize.
 
