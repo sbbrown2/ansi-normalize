@@ -184,3 +184,53 @@ func TestStripLenientDropsUnknownEscapeToo(t *testing.T) {
 		t.Errorf("Strip(lenient) = %q, want %q", got, "beforeafter")
 	}
 }
+
+func TestStripStrictRejectsMalformedSequences(t *testing.T) {
+	cases := []struct {
+		name, in string
+	}{
+		{"bare escape at end of input", "before\x1b"},
+		{"truncated CSI sequence", "before\x1b[1;3"},
+		{"invalid CSI byte", "before\x1b[1;3\x01after"},
+		{"unterminated OSC sequence", "before\x1b]0;title"},
+		{"unterminated DCS sequence", "before\x1bPfoo"},
+	}
+	for _, c := range cases {
+		_, err := Strip([]byte(c.in), false)
+		if err == nil {
+			t.Errorf("%s: expected an error in strict mode", c.name)
+			continue
+		}
+		if _, ok := err.(*MalformedError); !ok {
+			t.Errorf("%s: expected *MalformedError, got %T", c.name, err)
+		}
+	}
+}
+
+func TestStripLenientDropsMalformedSequences(t *testing.T) {
+	// Unlike an unrecognized-but-complete escape (two bytes, dropped in
+	// place), a malformed sequence with no terminator has no defined end
+	// short of the end of input, so lenient mode drops everything from
+	// the ESC byte to EOF along with it. An invalid CSI byte is the odd
+	// one out: it terminates the sequence right there, so text after it
+	// survives.
+	cases := []struct {
+		name, in, want string
+	}{
+		{"bare escape at end of input", "before\x1b", "before"},
+		{"truncated CSI sequence consumes to end of input", "before\x1b[1;3", "before"},
+		{"invalid CSI byte only consumes up to that byte", "before\x1b[1;3\x01after", "beforeafter"},
+		{"unterminated OSC sequence consumes to end of input", "before\x1b]0;title", "before"},
+		{"unterminated DCS sequence consumes to end of input", "before\x1bPfoo", "before"},
+	}
+	for _, c := range cases {
+		got, err := Strip([]byte(c.in), true)
+		if err != nil {
+			t.Errorf("%s: unexpected error in lenient mode: %v", c.name, err)
+			continue
+		}
+		if string(got) != c.want {
+			t.Errorf("%s: Strip(%q, lenient) = %q, want %q", c.name, c.in, got, c.want)
+		}
+	}
+}
