@@ -125,6 +125,17 @@ hello world
 truncated sequence is an error unless you also pass `--lenient`, in
 which case it's dropped along with everything else `--strip` removes.
 
+## exit codes
+
+- `0` - everything given was read, parsed, and written (or written back,
+  under `-w`) without error.
+- `1` - at least one file failed: it couldn't be opened, it was
+  rejected in strict mode, or writing the result back failed. With
+  multiple files, `escfmt` still processes the rest before returning
+  this.
+- `2` - the arguments themselves are invalid, e.g. `-w` with no file
+  arguments. Nothing is read or written.
+
 ## building
 
 Standard library only, no dependencies:
